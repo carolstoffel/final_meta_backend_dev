@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<section>
+  <article>
+    <h1>Make a reservation</h1>
+    <div class="row">
+      <div class="column">
+        {% csrf_token %}
+        <form method="POST" id="reservation-form">
+          <p>
+            <label for="first_name">Name</label>
+            <input type="text" placeholder="Your Name" maxlength="200" required id="first_name">
+          </p>
+          <p>
+            <label for="reservation_date">Reservation date</label>
+            <input type="date" id="reservation_date" required>
+          </p>
+          <p>
+            <label for="reservation_slot">Reservation time</label>
+            <select id="reservation_slot" required>
+              <option value="" disabled selected>Select time</option>
+            </select>
+          </p>
+          <button type="submit" id="button">Reserve</button>
+        </form>
+      </div>
+
+      <div class="column">
+        <h2>Bookings For <span id="today"></span></h2>
+        <div id="bookings">
+        </div>
+      </div>
+    </div>
+  </article>
+</section>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const dateInput = document.getElementById('reservation_date');
+    const todaySpan = document.getElementById('today');
+    const slotSelect = document.getElementById('reservation_slot');
+    const bookingsDiv = document.getElementById('bookings');
+    const form = document.getElementById('reservation-form');
+    
+    // Initialize date field
+    const date = new Date();
+    dateInput.value = date.toISOString().split('T')[0];
+    todaySpan.textContent = dateInput.value;
+
+    // Fetch bookings
+    function getBookings() {
+      const selectedDate = dateInput.value;
+      todaySpan.textContent = selectedDate;
+      fetch("{% url 'bookings' %}?date=" + selectedDate)
+        .then(response => response.json())
+        .then(data => {
+          const reservedSlots = data.map(item => item.fields.reservation_slot);
+          let bookingsHtml = '';
+          let slotOptionsHtml = '<option value="" disabled selected>Select time</option>';
+
+          for (let i = 10; i <= 20; i++) {
+            const label = formatTime(i);
+            const isDisabled = reservedSlots.includes(i) ? ' disabled' : '';
+            slotOptionsHtml += `<option value="${i}"${isDisabled}>${label}</option>`;
+          }
+
+          slotSelect.innerHTML = slotOptionsHtml;
+
+          if (data.length > 0) {
+            bookingsHtml = data.map(item => `<p>${item.fields.first_name} - ${formatTime(item.fields.reservation_slot)}</p>`).join('');
+          } else {
+            bookingsHtml = 'No bookings';
+          }
+
+          bookingsDiv.innerHTML = bookingsHtml;
+        })
+        .catch(error => {
+          console.error('Error fetching bookings:', error);
+          bookingsDiv.innerHTML = 'Error fetching bookings';
+        });
+    }
+
+    // Format time
+    function formatTime(time) {
+      const ampm = time < 12 ? 'AM' : 'PM';
+      const hour = time % 12 || 12;
+      return `${hour} ${ampm}`;
+    }
+
+    // Event listeners
+    dateInput.addEventListener('change', getBookings);
+
+    form.addEventListener('submit', function(event) {
+      event.preventDefault();
+
+      const formData = {
+        first_name: document.getElementById('first_name').value,
+        reservation_date: dateInput.value,
+        reservation_slot: slotSelect.value,
+      };
+
+      fetch("{% url 'bookings' %}", {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify(formData)
+      })
+      .then(response => response.text())
+      .then(() => {
+        getBookings();
+        form.reset(); // Reset the form after successful submission
+      })
+      .catch(error => {
+        console.error('Error making reservation:', error);
+      });
+    });
+
+    // Initial fetch
+    getBookings();
+  });
+</script>
+{% endblock %}
